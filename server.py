@@ -17,6 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+logging.getLogger("aioice").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 HOST = os.environ.get("HOST", "0.0.0.0")

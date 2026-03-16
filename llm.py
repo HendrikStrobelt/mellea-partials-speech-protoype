@@ -72,7 +72,7 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
 
     Puts each sentence string onto the queue, then puts None as sentinel.
     """
-    logger.info("LLM input: %r", user_text)
+    logger.debug("LLM input: %r", user_text)
     backend = _make_backend()
 
     instruction = Instruction(
@@ -89,10 +89,10 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
     async for sentence in result.astream():
         sentence = sentence.strip()
         if sentence:
-            logger.info("LLM sentence: %r", sentence)
+            logger.debug("LLM sentence: %r", sentence)
             await sentence_queue.put(sentence)
 
     if result.failed_chunk:
         logger.warning("Guardian stopped streaming at chunk: %r", result.failed_chunk)
 
-    logger.info("LLM complete. Full text: %r", result.full_text)
+    logger.debug("LLM complete. Full text: %r", result.full_text)

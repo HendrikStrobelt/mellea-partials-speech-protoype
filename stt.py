@@ -45,7 +45,7 @@ class WhisperSTT:
             return text
 
         text = await loop.run_in_executor(None, _run)
-        logger.info("STT: %r", text)
+        logger.debug("STT: %r", text)
         return text
 
 
@@ -80,7 +80,7 @@ class GraniteSpeechSTT:
             return text
 
         text = await loop.run_in_executor(None, _run)
-        logger.info("STT: %r", text)
+        logger.debug("STT: %r", text)
         return text
 
 

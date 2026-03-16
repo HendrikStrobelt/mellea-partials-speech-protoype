@@ -74,7 +74,7 @@ class VoiceActivityDetector:
                         utterance = utterance[:speech_end]
 
                         if utterance.shape[0] >= MIN_UTTERANCE_SAMPLES:
-                            logger.info(
+                            logger.debug(
                                 "Utterance detected: %.2fs",
                                 utterance.shape[0] / VAD_SAMPLE_RATE,
                             )

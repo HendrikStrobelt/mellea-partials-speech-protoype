@@ -21,13 +21,22 @@ class TTSOutputTrack(MediaStreamTrack):
         super().__init__()
         self._queue: asyncio.Queue[av.AudioFrame | None] = asyncio.Queue()
         self._pts: int = 0
+        self._start: float | None = None  # wall-clock anchor
 
     def enqueue(self, frame: av.AudioFrame) -> None:
         """Add an audio frame to the playback queue."""
         self._queue.put_nowait(frame)
 
     async def recv(self) -> av.AudioFrame:
-        await asyncio.sleep(FRAME_SAMPLES / SAMPLE_RATE)  # ~20ms pacing
+        loop = asyncio.get_event_loop()
+        if self._start is None:
+            self._start = loop.time()
+
+        # Sleep until this frame's target wall-clock time
+        target = self._start + (self._pts / SAMPLE_RATE)
+        delay = target - loop.time()
+        if delay > 0:
+            await asyncio.sleep(delay)
 
         try:
             frame = self._queue.get_nowait()

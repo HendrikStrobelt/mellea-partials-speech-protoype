@@ -121,8 +121,9 @@ class AudioPipeline:
     async def _synthesize_and_enqueue(self, sentence: str) -> None:
         self._emit("tts_start", sentence=sentence)
         chunks = await self._tts.synthesize(sentence)
-        for audio_chunk in chunks:
-            frames = pcm24k_to_webrtc_frames(audio_chunk)
+        if chunks:
+            combined = np.concatenate(chunks)
+            frames = pcm24k_to_webrtc_frames(combined)
             for frame in frames:
                 self._output.enqueue(frame)
         self._emit("tts_done")
