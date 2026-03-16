@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mellea Voice Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+      padding: 24px;
+    }
+    h1 { font-size: 1.5rem; font-weight: 500; color: #aaa; }
+    #btn {
+      padding: 16px 48px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 32px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+      transition: background 0.2s;
+    }
+    #btn:hover:not(:disabled) { background: #1d4ed8; }
+    #btn:disabled { background: #444; cursor: default; }
+    #status {
+      font-size: 0.9rem;
+      color: #888;
+      min-height: 1.2em;
+    }
+    #log {
+      width: 100%;
+      max-width: 640px;
+      max-height: 320px;
+      overflow-y: auto;
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.8rem;
+      font-family: monospace;
+      color: #ccc;
+    }
+    .log-entry { margin-bottom: 4px; }
+    .log-entry.info { color: #60a5fa; }
+    .log-entry.error { color: #f87171; }
+    .log-entry.pipeline { color: #4ade80; }
+    #log-toggle {
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      border: 1px solid #444;
+      border-radius: 16px;
+      cursor: pointer;
+      background: #1a1a1a;
+      color: #aaa;
+      transition: background 0.2s;
+    }
+    #log-toggle:hover { background: #2a2a2a; }
+    #vu-container {
+      width: 240px;
+      height: 8px;
+      background: #2a2a2a;
+      border-radius: 4px;
+      overflow: hidden;
+      display: none;
+    }
+    #vu-bar {
+      height: 100%;
+      width: 0%;
+      background: #4ade80;
+      border-radius: 4px;
+      transition: width 0.05s, background-color 0.05s;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mellea Voice Assistant</h1>
+  <button id="btn">Start</button>
+  <div id="vu-container"><div id="vu-bar"></div></div>
+  <div id="status">Press Start to begin</div>
+  <button id="log-toggle">Show Logs</button>
+  <div id="log" style="display:none"></div>
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <script>
+    const btn = document.getElementById('btn');
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const audioEl = document.getElementById('remoteAudio');
+    const logToggle = document.getElementById('log-toggle');
+
+    let pc = null;
+    let logsVisible = false;
+    let audioContext = null;
+    let vuAnimFrame = null;
+    const vuContainer = document.getElementById('vu-container');
+    const vuBar = document.getElementById('vu-bar');
+
+    logToggle.onclick = () => {
+      logsVisible = !logsVisible;
+      logEl.style.display = logsVisible ? 'block' : 'none';
+      logToggle.textContent = logsVisible ? 'Hide Logs' : 'Show Logs';
+      if (logsVisible) logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    function log(msg, level = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${level}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    async function start() {
+      btn.disabled = true;
+      setStatus('Requesting microphone...');
+      log('Requesting microphone access');
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        });
+      } catch (err) {
+        log(`Microphone error: ${err.message}`, 'error');
+        setStatus('Microphone access denied');
+        btn.disabled = false;
+        return;
+      }
+
+      log('Microphone access granted');
+
+      // VU meter setup
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const timeDomainData = new Uint8Array(analyser.fftSize);
+      vuContainer.style.display = 'block';
+
+      function updateVU() {
+        analyser.getByteTimeDomainData(timeDomainData);
+        let sum = 0;
+        for (let i = 0; i < timeDomainData.length; i++) {
+          const v = (timeDomainData[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / timeDomainData.length);
+        const pct = Math.min(rms * 100, 100);
+        vuBar.style.width = pct + '%';
+        vuBar.style.backgroundColor = pct > 75 ? '#f87171' : pct > 40 ? '#facc15' : '#4ade80';
+        vuAnimFrame = requestAnimationFrame(updateVU);
+      }
+      updateVU();
+
+      setStatus('Connecting...');
+
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      // Add mic tracks to peer connection
+      for (const track of stream.getTracks()) {
+        pc.addTrack(track, stream);
+      }
+
+      // Receive pipeline log events from server via DataChannel
+      pc.ondatachannel = (event) => {
+        const ch = event.channel;
+        ch.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            let text;
+            switch (msg.event) {
+              case 'vad_utterance':
+                text = `[VAD] Speech detected (${msg.duration}s)`;
+                break;
+              case 'stt_result':
+                text = `[STT] "${msg.text}"`;
+                break;
+              case 'stt_empty':
+                text = '[STT] (empty transcription)';
+                break;
+              case 'llm_start':
+                text = '[LLM] Generating response...';
+                break;
+              case 'llm_sentence':
+                text = `[LLM] Sentence: "${msg.sentence}"`;
+                break;
+              case 'llm_done':
+                text = '[LLM] Done';
+                break;
+              case 'tts_start':
+                text = `[TTS] Synthesizing: "${msg.sentence}"`;
+                break;
+              case 'tts_done':
+                text = '[TTS] Done';
+                break;
+              case 'pipeline_error':
+                text = `[Error] Pipeline error: ${msg.error}`;
+                break;
+              default:
+                text = `[Pipeline] ${msg.event}`;
+            }
+            log(text, 'pipeline');
+          } catch (err) { console.warn('Bad pipeline event:', err, e.data); }
+        };
+      };
+
+      // Play remote audio (TTS output)
+      pc.ontrack = (event) => {
+        log('Received remote audio track');
+        if (event.streams && event.streams[0]) {
+          audioEl.srcObject = event.streams[0];
+        } else {
+          const remoteStream = new MediaStream();
+          remoteStream.addTrack(event.track);
+          audioEl.srcObject = remoteStream;
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        const state = pc.iceConnectionState;
+        log(`ICE connection state: ${state}`);
+        if (state === 'connected' || state === 'completed') {
+          setStatus('Connected — speak into your microphone');
+          btn.textContent = 'Stop';
+          btn.disabled = false;
+          btn.onclick = stop;
+        } else if (state === 'failed' || state === 'disconnected') {
+          setStatus(`Connection ${state}`);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          log(`ICE candidate: ${event.candidate.type}`);
+        }
+      };
+
+      // Create offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Wait for ICE gathering to complete
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') {
+          resolve();
+        } else {
+          pc.addEventListener('icegatheringstatechange', () => {
+            if (pc.iceGatheringState === 'complete') resolve();
+          });
+        }
+      });
+
+      log('Sending SDP offer to server');
+
+      let response;
+      try {
+        response = await fetch('/offer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sdp: pc.localDescription.sdp,
+            type: pc.localDescription.type,
+          }),
+        });
+      } catch (err) {
+        log(`Server error: ${err.message}`, 'error');
+        setStatus('Failed to connect to server');
+        btn.disabled = false;
+        return;
+      }
+
+      const answer = await response.json();
+      log('Received SDP answer from server');
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
+
+    function stop() {
+      if (vuAnimFrame) { cancelAnimationFrame(vuAnimFrame); vuAnimFrame = null; }
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      vuBar.style.width = '0%';
+      vuContainer.style.display = 'none';
+      if (pc) {
+        pc.getSenders().forEach(s => s.track && s.track.stop());
+        pc.close();
+        pc = null;
+      }
+      audioEl.srcObject = null;
+      setStatus('Disconnected');
+      btn.textContent = 'Start';
+      btn.onclick = start;
+      btn.disabled = false;
+      log('Disconnected');
+    }
+
+    btn.onclick = start;
+  </script>
+</body>
+</html>

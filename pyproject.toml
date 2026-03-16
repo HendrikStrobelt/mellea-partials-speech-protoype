@@ -1,0 +1,30 @@
+[project]
+name = "mellea-partial-webrtc"
+version = "0.1.0"
+description = "Real-time voice conversation: WebRTC + STT + LLM (Mellea) + TTS"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.9",
+    "aiortc>=1.9",
+    "av>=12",
+    "silero-vad>=5.1",
+    "torch>=2.2",
+    "torchaudio>=2.2",
+    "kokoro>=0.9.4",
+    "soundfile>=0.12",
+    "numpy>=1.26",
+    "mellea[all]>=0.3.2",
+    "en-core-web-sm",
+    "faster-whisper>=1.2.1",
+]
+
+[project.optional-dependencies]
+granite = [
+    "transformers>=4.52.4",
+    "peft>=0.14",
+    "accelerate>=0.34",
+]
+
+[tool.uv.sources]
+mellea = { git = "https://github.com/generative-computing/mellea.git" }
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
