@@ -33,7 +33,7 @@ class GuardianRequirement(Requirement):
         super().__init__(
             description="The response must not contain harmful, toxic, or unsafe content.",
             check_only=True,
-            output_to_bool=(lambda x: "unsafe" not in str(x))
+            output_to_bool=(lambda x: "yes" not in str(x).lower())
         )
         self._guardian_backend = OpenAIBackend(
             model_id=GUARDIAN_MODEL,
@@ -79,11 +79,15 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
         description=f"{user_text}",
     )
 
+    async def on_failure(chunk: str, results: list[ValidationResult], stream_result) -> str | None:
+        return "Sorry, some things are not right."
+
     result = await stream_with_chunking(
         instruction,
         backend,
         chunking_mode=ChunkingMode.SENTENCE,
         quick_check_requirements=[GuardianRequirement()],
+        on_chunk_failure=on_failure,
     )
 
     async for sentence in result.astream():

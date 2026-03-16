@@ -18,7 +18,6 @@ from mellea.stdlib.components.instruction import Instruction
 from mellea.stdlib.context import SimpleContext
 from mellea.stdlib.functional import avalidate
 
-
 OnChunkFailure = Callable[
     [str, list["ValidationResult"], "StreamChunkingResult"],
     Awaitable[str | None],
@@ -79,11 +78,11 @@ def _cancel_thunk(thunk: ModelOutputThunk) -> None:
 
 
 async def _validate_chunk(
-    chunk: str,
-    qc_reqs: list[Requirement | str],
-    backend: Backend,
-    result: StreamChunkingResult,
-    on_failure: OnChunkFailure | None = None,
+        chunk: str,
+        qc_reqs: list[Requirement | str],
+        backend: Backend,
+        result: StreamChunkingResult,
+        on_failure: OnChunkFailure | None = None,
 ) -> tuple[bool, str]:
     """Validate a single chunk. Returns (passed, chunk_text)."""
     if not chunk.strip():
@@ -91,8 +90,9 @@ async def _validate_chunk(
         return True, chunk
 
     validation_ctx = SimpleContext()
+    validation_ctx = validation_ctx.add(ModelOutputThunk(chunk))
     chunk_results = await avalidate(
-        qc_reqs, validation_ctx, backend, output=ModelOutputThunk(chunk)
+        qc_reqs, validation_ctx, backend
     )
     result.quick_check_results.append(chunk_results)
 
@@ -108,13 +108,13 @@ async def _validate_chunk(
 
 
 async def stream_with_chunking(
-    instruction: Instruction,
-    backend: Backend,
-    *,
-    quick_check_requirements: list[Requirement | str] | None = None,
-    chunking_mode: ChunkingMode = ChunkingMode.SENTENCE,
-    model_options: dict | None = None,
-    on_chunk_failure: OnChunkFailure | None = None,
+        instruction: Instruction,
+        backend: Backend,
+        *,
+        quick_check_requirements: list[Requirement | str] | None = None,
+        chunking_mode: ChunkingMode = ChunkingMode.SENTENCE,
+        model_options: dict | None = None,
+        on_chunk_failure: OnChunkFailure | None = None,
 ) -> StreamChunkingResult:
     """Stream LLM output, validating chunks against quick-check requirements.
 
@@ -152,8 +152,6 @@ async def stream_with_chunking(
                             return
                     result.validated_chunks.append(chunk)
                     await result._chunk_queue.put(chunk)
-
-
 
             # Validate remaining buffer from final text
             final_parts = pattern.split(result.full_text)
