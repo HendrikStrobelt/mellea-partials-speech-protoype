@@ -14,6 +14,7 @@ dependencies = [
     "soundfile>=0.12",
     "numpy>=1.26",
     "mellea[all]>=0.3.2",
+    "mellea-partial",
     "en-core-web-sm",
     "faster-whisper>=1.2.1",
 ]
@@ -27,4 +28,5 @@ granite = [
 
 [tool.uv.sources]
 mellea = { git = "https://github.com/generative-computing/mellea.git" }
+mellea-partial = { git = "https://github.com/HendrikStrobelt/Mellea-partials.git" }
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }

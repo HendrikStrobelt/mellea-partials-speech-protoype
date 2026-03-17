@@ -11,7 +11,7 @@ from mellea.stdlib.components.instruction import Instruction
 from mellea.core.requirement import Requirement, ValidationResult
 from mellea.stdlib.context import SimpleContext
 
-from stream_with_chunking import ChunkingMode, stream_with_chunking
+from mellea_partial import ChunkingMode, stream_with_chunking
 
 logger = logging.getLogger(__name__)
 
@@ -95,15 +95,17 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
         description=f"{user_text}",
     )
 
-    async def on_failure(chunk: str, results: list[ValidationResult], stream_result) -> str | None:
-        return "Sorry, some things are not right."
+    async def on_failure(chunk: str, ctx, requirements, results) -> tuple[bool, str]:
+        return (True, "Sorry, some things are not right.")
 
+    ctx = SimpleContext()
     result = await stream_with_chunking(
         instruction,
         backend,
-        chunking_mode=ChunkingMode.SENTENCE,
+        ctx,
+        chunking=ChunkingMode.SENTENCE,
         quick_check_requirements=[GuardianRequirement(), MarkdownFreeRequirement()],
-        on_chunk_failure=on_failure,
+        quick_repair=on_failure,
     )
 
     async for sentence in result.astream():

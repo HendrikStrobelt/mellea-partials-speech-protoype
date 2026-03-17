@@ -2714,6 +2714,14 @@ all = [
 ]
 
 [[package]]
+name = "mellea-partial"
+version = "0.1.0"
+source = { git = "https://github.com/HendrikStrobelt/Mellea-partials.git#fc4284bc208daa40a256997d4e2254c6edaf42f2" }
+dependencies = [
+    { name = "mellea", extra = ["all"] },
+]
+
+[[package]]
 name = "mellea-partial-webrtc"
 version = "0.1.0"
 source = { virtual = "." }
@@ -2725,6 +2733,7 @@ dependencies = [
     { name = "faster-whisper" },
     { name = "kokoro" },
     { name = "mellea", extra = ["all"] },
+    { name = "mellea-partial" },
     { name = "numpy" },
     { name = "silero-vad" },
     { name = "soundfile" },
@@ -2749,6 +2758,7 @@ requires-dist = [
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "kokoro", specifier = ">=0.9.4" },
     { name = "mellea", extras = ["all"], git = "https://github.com/generative-computing/mellea.git" },
+    { name = "mellea-partial", git = "https://github.com/HendrikStrobelt/Mellea-partials.git" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "peft", marker = "extra == 'granite'", specifier = ">=0.14" },
     { name = "silero-vad", specifier = ">=5.1" },
