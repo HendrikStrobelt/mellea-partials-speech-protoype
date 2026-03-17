@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 
 from mellea.backends.openai import OpenAIBackend
 from mellea.backends.model_options import ModelOption
@@ -24,6 +25,21 @@ SYSTEM_PROMPT = (
     "Keep responses concise — typically 2-4 sentences. "
     "Avoid markdown, bullet points, or numbered lists; use plain prose only."
 )
+
+
+class MarkdownFreeRequirement(Requirement):
+    """Rejects chunks that contain markdown formatting (bad for TTS)."""
+
+    def __init__(self):
+        super().__init__(
+            description="The response must not contain markdown formatting.",
+            check_only=True,
+        )
+
+    async def validate(self, backend, ctx, *, format=None, model_options=None):
+        text = ctx.last_output().value or ""
+        has_markdown = bool(re.search(r"(\*\*|\*|#+|`|\[.+\]\(.+\)|^\s*[-*]\s)", text, re.MULTILINE))
+        return ValidationResult(result=not has_markdown)
 
 
 class GuardianRequirement(Requirement):
@@ -86,7 +102,7 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
         instruction,
         backend,
         chunking_mode=ChunkingMode.SENTENCE,
-        quick_check_requirements=[GuardianRequirement()],
+        quick_check_requirements=[GuardianRequirement(), MarkdownFreeRequirement()],
         on_chunk_failure=on_failure,
     )
 
