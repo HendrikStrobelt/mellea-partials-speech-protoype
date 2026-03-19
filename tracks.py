@@ -27,6 +27,17 @@ class TTSOutputTrack(MediaStreamTrack):
         """Add an audio frame to the playback queue."""
         self._queue.put_nowait(frame)
 
+    def flush(self) -> int:
+        """Drain all queued audio frames instantly. Returns number of frames dropped."""
+        count = 0
+        while True:
+            try:
+                self._queue.get_nowait()
+                count += 1
+            except asyncio.QueueEmpty:
+                break
+        return count
+
     async def recv(self) -> av.AudioFrame:
         loop = asyncio.get_event_loop()
         if self._start is None:

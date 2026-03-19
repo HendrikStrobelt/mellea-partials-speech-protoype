@@ -11,7 +11,7 @@ from mellea.stdlib.components.instruction import Instruction
 from mellea.core.requirement import Requirement, ValidationResult
 from mellea.stdlib.context import SimpleContext
 
-from mellea_partial import ChunkingMode, stream_with_chunking
+from mellea_partial import ChunkingMode, StreamChunkingResult, stream_with_chunking
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +83,11 @@ def _make_backend() -> OpenAIBackend:
     )
 
 
-async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | None]) -> None:
+async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | None]) -> StreamChunkingResult:
     """Stream LLM response sentence-by-sentence into sentence_queue.
 
     Puts each sentence string onto the queue, then puts None as sentinel.
+    Returns the StreamChunkingResult so callers can cancel _task if needed.
     """
     logger.debug("LLM input: %r", user_text)
     backend = _make_backend()
@@ -96,7 +97,7 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
     )
 
     async def on_failure(chunk: str, ctx, requirements, results) -> tuple[bool, str]:
-        return (True, "Sorry, some things are not right.")
+        return True, "Sorry, some things are not right."
 
     ctx = SimpleContext()
     result = await stream_with_chunking(
@@ -118,3 +119,4 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
         logger.warning("Guardian stopped streaming at chunk: %r", result.failed_chunk)
 
     logger.debug("LLM complete. Full text: %r", result.full_text)
+    return result

@@ -212,6 +212,9 @@
               case 'tts_done':
                 text = '[TTS] Done';
                 break;
+              case 'barge_in':
+                text = '[Barge-in] User interrupted — pipeline reset';
+                break;
               case 'pipeline_error':
                 text = `[Error] Pipeline error: ${msg.error}`;
                 break;

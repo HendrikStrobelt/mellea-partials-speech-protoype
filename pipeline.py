@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 import av
@@ -20,6 +21,7 @@ from vad import VoiceActivityDetector
 logger = logging.getLogger(__name__)
 
 _RESAMPLE_BUF_SAMPLES = 9600  # 200ms at 48kHz before batch-resampling
+_BARGEIN_ENERGY_THRESHOLD = float(os.environ.get("BARGEIN_ENERGY_THRESHOLD", "0.005"))
 _to_mono = av.AudioResampler(format='s16', layout='mono', rate=48000)
 
 
@@ -34,6 +36,10 @@ class AudioPipeline:
         self._vad = VoiceActivityDetector(on_utterance=None)  # sync push API
         self._busy = False  # process one utterance at a time
         self._resample_buf: list[np.ndarray] = []  # accumulated int16 mono at 48kHz
+        self._generation_task: asyncio.Task | None = None
+        self._llm_task: asyncio.Task | None = None
+        self._llm_result = None  # StreamChunkingResult | None
+        self._generation_epoch: int = 0
 
     def _emit(self, event: str, **data) -> None:
         if not self._log_channel:
@@ -67,14 +73,70 @@ class AudioPipeline:
         resampled = AF.resample(tensor, 48000, 16000)
         pcm = resampled.squeeze(0)  # (samples,) at 16kHz float32
 
+        was_in_speech = self._vad._in_speech
         utterances = self._vad.push(pcm)
+
+        # Fast barge-in: interrupt on speech onset, not complete utterance
+        if self._busy and self._vad._in_speech and not was_in_speech:
+            batch_energy = float(pcm.pow(2).mean().sqrt())
+            if batch_energy >= _BARGEIN_ENERGY_THRESHOLD:
+                logger.info("Speech onset barge-in (energy=%.4f)", batch_energy)
+                asyncio.ensure_future(self._interrupt(reset_vad=False))
+                return  # skip utterance processing this cycle
+
         for utterance in utterances:
             duration = round(utterance.shape[-1] / 16000, 2)
             self._emit("vad_utterance", duration=duration)
             if self._busy:
-                logger.warning("Pipeline busy, dropping utterance (%.2fs)", duration)
+                if self._is_likely_echo(utterance):
+                    logger.debug("Barge-in suppressed: likely echo (%.2fs)", duration)
+                else:
+                    asyncio.ensure_future(self._handle_bargein(utterance))
             else:
-                asyncio.ensure_future(self._process_utterance(utterance))
+                self._output.flush()  # clear any lingering TTS audio
+                self._generation_task = asyncio.ensure_future(self._process_utterance(utterance))
+
+    def _is_likely_echo(self, utterance: torch.Tensor) -> bool:
+        """Return True if utterance energy is too low to be real speech (echo residual)."""
+        energy = float(utterance.pow(2).mean().sqrt())
+        return energy < _BARGEIN_ENERGY_THRESHOLD
+
+    async def _interrupt(self, reset_vad: bool = True) -> None:
+        """Silence output, cancel in-flight LLM/TTS, reset state."""
+        flushed = self._output.flush()
+        logger.debug("Barge-in: flushed %d queued frames", flushed)
+
+        self._generation_epoch += 1
+
+        if self._llm_result is not None and hasattr(self._llm_result, "_task"):
+            self._llm_result._task.cancel()
+
+        if self._llm_task is not None and not self._llm_task.done():
+            self._llm_task.cancel()
+            try:
+                await self._llm_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._llm_task = None
+
+        if self._generation_task is not None and not self._generation_task.done():
+            self._generation_task.cancel()
+            try:
+                await self._generation_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        self._llm_result = None
+        self._generation_task = None
+        self._busy = False
+        if reset_vad:
+            self._vad.reset()
+        self._emit("barge_in")
+        logger.info("Barge-in: pipeline interrupted")
+
+    async def _handle_bargein(self, utterance: torch.Tensor) -> None:
+        await self._interrupt()
+        self._generation_task = asyncio.ensure_future(self._process_utterance(utterance))
 
     async def _process_utterance(self, audio: torch.Tensor) -> None:
         self._busy = True
@@ -90,18 +152,24 @@ class AudioPipeline:
             # LLM → sentence queue
             sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
             self._emit("llm_start", prompt=text)
-            asyncio.ensure_future(self._safe_generate(text, sentence_queue))
+            epoch = self._generation_epoch
+            self._llm_task = asyncio.ensure_future(self._safe_generate(text, sentence_queue))
 
             # TTS each sentence as it arrives
             while True:
                 sentence = await sentence_queue.get()
                 if sentence is None:
                     break
+                if epoch != self._generation_epoch:
+                    break
                 self._emit("llm_sentence", sentence=sentence)
-                await self._synthesize_and_enqueue(sentence)
+                await self._synthesize_and_enqueue(sentence, epoch)
 
             self._emit("llm_done")
 
+        except asyncio.CancelledError:
+            logger.debug("_process_utterance cancelled (barge-in)")
+            return
         except Exception as exc:
             logger.exception("Pipeline error")
             self._emit("pipeline_error", error=str(exc))
@@ -111,16 +179,23 @@ class AudioPipeline:
     async def _safe_generate(self, text: str, sentence_queue: asyncio.Queue) -> None:
         """Wrap generate_response to guarantee the sentinel is always put."""
         try:
-            await generate_response(text, sentence_queue)
+            self._llm_result = await generate_response(text, sentence_queue)
+        except asyncio.CancelledError:
+            logger.debug("LLM generation cancelled (barge-in)")
+            raise
         except Exception:
             logger.exception("LLM generation failed")
             self._emit("pipeline_error", error="LLM generation failed")
         finally:
+            self._llm_result = None
             await sentence_queue.put(None)  # guarantee consumer loop exits
 
-    async def _synthesize_and_enqueue(self, sentence: str) -> None:
+    async def _synthesize_and_enqueue(self, sentence: str, epoch: int) -> None:
         self._emit("tts_start", sentence=sentence)
         chunks = await self._tts.synthesize(sentence)
+        if epoch != self._generation_epoch:
+            logger.debug("Stale TTS output discarded (epoch %d != %d)", epoch, self._generation_epoch)
+            return
         if chunks:
             combined = np.concatenate(chunks)
             frames = pcm24k_to_webrtc_frames(combined)
