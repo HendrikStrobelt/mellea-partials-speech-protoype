@@ -13,7 +13,7 @@ dependencies = [
     "kokoro>=0.9.4",
     "soundfile>=0.12",
     "numpy>=1.26",
-    "mellea[all]>=0.3.2",
+    "mellea[all]>=0.4.1",
     "mellea-partial",
     "en-core-web-sm",
     "faster-whisper>=1.2.1",
