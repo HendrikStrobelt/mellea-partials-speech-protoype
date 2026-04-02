@@ -17,16 +17,37 @@ The [Mellea-partials](https://github.com/HendrikStrobelt/Mellea-partials) librar
 - [LM Studio](https://lmstudio.ai/) with a model loaded and the local server running
 - macOS/Linux (espeak-ng optional, for extended language support in Kokoro)
 
+## Installation
+
+### From PyPI (when published)
+
+```bash
+uv pip install mellea-partial-webrtc
+```
+
+### From source (uv)
+
+```bash
+git clone https://github.com/HendrikStrobelt/mellea-partial-webrtc
+cd mellea-partial-webrtc
+uv sync
+```
+
+> **Note:** Three dependencies are sourced outside PyPI and require uv to resolve:
+> `mellea` (git), `mellea-partial` (git), `en-core-web-sm` (direct wheel URL).
+> They are declared in `[tool.uv.sources]` and installed automatically by `uv sync`.
+
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (uv)
 uv sync
 
 # 2. Start LM Studio and load a model, then enable the local server (default: http://localhost:1234)
 
 # 3. Start the server
-uv run python server.py
+mellea-webrtc
+# or: uv run mellea-webrtc
 
 # 4. Open http://localhost:8080 in your browser, click Start, and speak
 ```
@@ -35,18 +56,22 @@ uv run python server.py
 
 ```
 mellea-partial-webrtc/
-├── pyproject.toml          # uv project, dependencies
-├── server.py               # aiohttp app, WebRTC signaling, entry point
-├── pipeline.py             # Orchestrates VAD → STT → LLM → TTS per utterance
-├── vad.py                  # Silero-VAD wrapper, detects utterance boundaries
-├── stt.py                  # STT protocol + Whisper & Granite backends
-├── llm.py                  # Mellea-partials integration (stream_with_chunking)
-├── tts.py                  # Kokoro TTS wrapper
-├── audio_utils.py          # Resample/format conversion helpers
-├── tracks.py               # Custom MediaStreamTrack for TTS output
-├── stream_with_chunking.py # Vendored from Mellea-partials
-└── static/
-    └── index.html          # Browser client
+├── pyproject.toml              # project metadata and dependencies
+├── src/
+│   └── mellea_webrtc/
+│       ├── __init__.py
+│       ├── server.py           # aiohttp app, WebRTC signaling, entry point
+│       ├── pipeline.py         # Orchestrates VAD → STT → LLM → TTS per utterance
+│       ├── vad.py              # Silero-VAD wrapper, detects utterance boundaries
+│       ├── stt.py              # STT protocol + Whisper & Granite backends
+│       ├── llm.py              # Mellea-partials integration (stream_with_chunking)
+│       ├── tts.py              # Kokoro TTS wrapper
+│       ├── audio_utils.py      # Resample/format conversion helpers
+│       ├── tracks.py           # Custom MediaStreamTrack for TTS output
+│       └── static/
+│           └── index.html      # Browser client
+└── tests/
+    └── test_stt.py             # Standalone WebRTC test client
 ```
 
 ## Configuration
@@ -66,7 +91,7 @@ All options are set via environment variables:
 Example with custom settings:
 
 ```bash
-LM_STUDIO_MODEL="llama-3.2-3b" WHISPER_MODEL="small" uv run python server.py
+LM_STUDIO_MODEL="llama-3.2-3b" WHISPER_MODEL="small" mellea-webrtc
 ```
 
 ## STT Backends
@@ -76,7 +101,7 @@ LM_STUDIO_MODEL="llama-3.2-3b" WHISPER_MODEL="small" uv run python server.py
 Uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper), runs on CPU, no GPU required.
 
 ```bash
-STT_BACKEND=whisper uv run python server.py
+STT_BACKEND=whisper mellea-webrtc
 ```
 
 ### Granite Speech (optional)
@@ -85,7 +110,7 @@ Uses IBM Granite Speech via `transformers`. Requires a CUDA GPU and additional d
 
 ```bash
 uv sync --extra granite
-STT_BACKEND=granite uv run python server.py
+STT_BACKEND=granite mellea-webrtc
 ```
 
 Set `GRANITE_MODEL` to override the default model (e.g. `ibm-granite/granite-speech-3.3-8b`).

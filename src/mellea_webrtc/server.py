@@ -10,8 +10,8 @@ from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
 
-from pipeline import AudioPipeline
-from tracks import TTSOutputTrack
+from mellea_webrtc.pipeline import AudioPipeline
+from mellea_webrtc.tracks import TTSOutputTrack
 
 logging.basicConfig(
     level=logging.INFO,

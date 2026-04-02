@@ -11,12 +11,12 @@ import numpy as np
 import torch
 import torchaudio.functional as AF
 
-from audio_utils import pcm24k_to_webrtc_frames
-from llm import generate_response
-from stt import create_stt_backend, STTBackend
-from tracks import TTSOutputTrack
-from tts import TextToSpeech
-from vad import VoiceActivityDetector
+from mellea_webrtc.audio_utils import pcm24k_to_webrtc_frames
+from mellea_webrtc.llm import generate_response
+from mellea_webrtc.stt import create_stt_backend, STTBackend
+from mellea_webrtc.tracks import TTSOutputTrack
+from mellea_webrtc.tts import TextToSpeech
+from mellea_webrtc.vad import VoiceActivityDetector
 
 logger = logging.getLogger(__name__)
 
