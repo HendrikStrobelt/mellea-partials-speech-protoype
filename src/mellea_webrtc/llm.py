@@ -97,6 +97,16 @@ async def generate_response(user_text: str, sentence_queue: asyncio.Queue[str | 
     )
 
     async def on_failure(chunk: str, ctx, requirements, results) -> tuple[bool, str]:
+        failed = [
+            f"{type(req).__name__}: {res}"
+            for req, res in zip(requirements, results)
+            if res and not getattr(res, "result", True)
+        ]
+        logger.warning(
+            "Quick-check failed for chunk %r — %s",
+            chunk,
+            "; ".join(failed) if failed else f"results={results}",
+        )
         return True, "Sorry, some things are not right."
 
     ctx = SimpleContext()
