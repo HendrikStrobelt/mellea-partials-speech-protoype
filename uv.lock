@@ -2760,7 +2760,6 @@ dependencies = [
 [package.optional-dependencies]
 granite = [
     { name = "accelerate" },
-    { name = "peft" },
     { name = "transformers" },
 ]
 
@@ -2776,12 +2775,11 @@ requires-dist = [
     { name = "mellea", extras = ["all"], git = "https://github.com/generative-computing/mellea.git" },
     { name = "mellea-partial", git = "https://github.com/HendrikStrobelt/Mellea-partials.git" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "peft", marker = "extra == 'granite'", specifier = ">=0.14" },
     { name = "silero-vad", specifier = ">=5.1" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "torch", specifier = ">=2.2" },
     { name = "torchaudio", specifier = ">=2.2" },
-    { name = "transformers", marker = "extra == 'granite'", specifier = ">=4.52.4" },
+    { name = "transformers", marker = "extra == 'granite'", specifier = ">=4.53.2" },
 ]
 provides-extras = ["granite"]
 

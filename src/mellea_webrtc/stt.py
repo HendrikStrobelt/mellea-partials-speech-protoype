@@ -1,3 +1,4 @@
+
 """Speech-to-text backends."""
 
 import asyncio
@@ -50,33 +51,50 @@ class WhisperSTT:
 
 
 class GraniteSpeechSTT:
-    """STT backend using IBM Granite Speech (requires CUDA)."""
+    """STT backend using IBM Granite Speech (CUDA/MPS/CPU)."""
 
     def __init__(self) -> None:
         from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
-        model_name = os.environ.get("GRANITE_MODEL", "ibm-granite/granite-speech-3.3-8b")
-        logger.info("Loading Granite Speech model: %s", model_name)
+        if torch.cuda.is_available():
+            self._device = "cuda"
+        elif torch.backends.mps.is_available():
+            self._device = "mps"
+        else:
+            self._device = "cpu"
+
+        model_name = os.environ.get("GRANITE_MODEL", "ibm-granite/granite-4.0-1b-speech")
+        logger.info("Loading Granite Speech model: %s on %s", model_name, self._device)
         self._processor = AutoProcessor.from_pretrained(model_name)
+        self._tokenizer = self._processor.tokenizer
         self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
             model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            device_map=self._device,
         )
 
     async def transcribe(self, audio_16k: torch.Tensor) -> str:
         loop = asyncio.get_event_loop()
-        audio_np = audio_16k.numpy()
+        wav = audio_16k.unsqueeze(0)  # (1, samples) as expected by processor
 
         def _run():
-            inputs = self._processor(
-                audio_np,
-                sampling_rate=16000,
-                return_tensors="pt",
-            ).to(self._model.device)
+            user_prompt = "<|audio|>can you transcribe the speech into a written format?"
+            chat = [{"role": "user", "content": user_prompt}]
+            text_prompt = self._tokenizer.apply_chat_template(
+                chat, tokenize=False, add_generation_prompt=True
+            )
+            model_inputs = self._processor(
+                text_prompt, wav, device=self._device, return_tensors="pt"
+            ).to(self._device)
             with torch.no_grad():
-                output_ids = self._model.generate(**inputs)
-            text = self._processor.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+                output_ids = self._model.generate(
+                    **model_inputs, max_new_tokens=200, do_sample=False, num_beams=1
+                )
+            num_input_tokens = model_inputs["input_ids"].shape[-1]
+            new_tokens = output_ids[0, num_input_tokens:].unsqueeze(0)
+            text = self._tokenizer.batch_decode(
+                new_tokens, add_special_tokens=False, skip_special_tokens=True
+            )[0].strip()
             return text
 
         text = await loop.run_in_executor(None, _run)
