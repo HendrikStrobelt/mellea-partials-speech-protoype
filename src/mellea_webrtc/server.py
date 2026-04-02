@@ -20,7 +20,7 @@ logging.basicConfig(
 logging.getLogger("aioice").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-HOST = os.environ.get("HOST", "0.0.0.0")
+HOST = os.environ.get("HOST", "localhost")
 PORT = int(os.environ.get("PORT", "8080"))
 STATIC_DIR = Path(__file__).parent / "static"
 
